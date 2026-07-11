@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 const { Command } = require('commander');
+const { getConfig, setConfig, getAllConfig } = require('../src/config');
 
 const program = new Command();
 
@@ -79,23 +80,27 @@ program
       .description('Set a config value')
       .argument('<key>', 'Config key')
       .argument('<value>', 'Config value')
-      .action(() => {
-        // stub — will be implemented in Phase 2
+      .action((key, value) => {
+        setConfig(key, value);
+        console.error(`Config ${key} set to ${value}`);
       }),
   )
   .addCommand(
     new Command('get')
       .description('Get a config value')
       .argument('<key>', 'Config key')
-      .action(() => {
-        // stub — will be implemented in Phase 2
+      .action((key) => {
+        console.log(getConfig(key));
       }),
   )
   .addCommand(
     new Command('list')
       .description('List all config values')
       .action(() => {
-        // stub — will be implemented in Phase 2
+        const all = getAllConfig();
+        for (const [key, value] of Object.entries(all)) {
+          console.log(`${key}=${value}`);
+        }
       }),
   );
 
