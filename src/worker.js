@@ -11,10 +11,35 @@ let shuttingDown = false;
 
 function startWorker(count = 1) {
   register();
+  sweepStaleJobs();
   process.on('SIGTERM', handleShutdown);
   process.on('SIGINT', handleShutdown);
   for (let i = 0; i < count; i++) {
     pollLoop();
+  }
+}
+
+function sweepStaleJobs() {
+  const db = getDb();
+  const staleTimeout = getConfig('stale_timeout_seconds');
+  const cutoff = new Date(Date.now() - staleTimeout * 1000).toISOString();
+  const now = new Date().toISOString();
+
+  const recovered = db.prepare(`
+    UPDATE jobs
+    SET state = 'pending',
+        claimed_at = NULL,
+        worker_pid = NULL,
+        next_attempt_at = NULL,
+        updated_at = ?
+    WHERE state = 'processing'
+      AND claimed_at IS NOT NULL
+      AND claimed_at <= ?
+    RETURNING id
+  `).all(now, cutoff);
+
+  for (const job of recovered) {
+    console.error(`Recovered stale job ${job.id}`);
   }
 }
 
@@ -42,6 +67,8 @@ function pollLoop() {
     process.exit(0);
     return;
   }
+
+  sweepStaleJobs();
 
   const job = claimJob();
 
