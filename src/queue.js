@@ -55,4 +55,24 @@ function enqueueJob(input) {
   return { id: job.id, state: 'pending' };
 }
 
-module.exports = { enqueueJob, listDeadJobs, retryDeadJob };
+function getStatus() {
+  const db = getDb();
+  const counts = {};
+  for (const row of db.prepare('SELECT state, COUNT(*) AS cnt FROM jobs GROUP BY state').all()) {
+    counts[row.state] = row.cnt;
+  }
+  for (const s of ['pending', 'processing', 'completed', 'failed', 'dead']) {
+    if (counts[s] === undefined) counts[s] = 0;
+  }
+  return counts;
+}
+
+function getJobs(state) {
+  const db = getDb();
+  if (state) {
+    return db.prepare('SELECT * FROM jobs WHERE state = ? ORDER BY created_at ASC').all(state);
+  }
+  return db.prepare('SELECT * FROM jobs ORDER BY created_at ASC').all();
+}
+
+module.exports = { enqueueJob, listDeadJobs, retryDeadJob, getStatus, getJobs };

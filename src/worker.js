@@ -181,4 +181,19 @@ function stopWorkers() {
   return { signaled, pruned };
 }
 
-module.exports = { startWorker, stopWorkers };
+function countActiveWorkers() {
+  let count = 0;
+  try {
+    for (const entry of fs.readdirSync(PID_DIR)) {
+      if (!entry.endsWith('.pid')) continue;
+      const pid = parseInt(path.basename(entry, '.pid'), 10);
+      try {
+        process.kill(pid, 0);
+        count++;
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return count;
+}
+
+module.exports = { startWorker, stopWorkers, countActiveWorkers };

@@ -2,8 +2,8 @@
 
 const { Command } = require('commander');
 const { getConfig, setConfig, getAllConfig } = require('../src/config');
-const { enqueueJob, listDeadJobs, retryDeadJob } = require('../src/queue');
-const { startWorker, stopWorkers } = require('../src/worker');
+const { enqueueJob, listDeadJobs, retryDeadJob, getStatus, getJobs } = require('../src/queue');
+const { startWorker, stopWorkers, countActiveWorkers } = require('../src/worker');
 
 const program = new Command();
 
@@ -59,7 +59,12 @@ program
   .command('status')
   .description('Show job counts and worker information')
   .action(() => {
-    // stub — will be implemented in Phase 10
+    const counts = getStatus();
+    const workers = countActiveWorkers();
+    for (const [state, count] of Object.entries(counts)) {
+      console.log(`${state.padEnd(12)} ${count}`);
+    }
+    console.log(`${'active workers'.padEnd(12)} ${workers}`);
   });
 
 program
@@ -67,8 +72,17 @@ program
   .description('List jobs filtered by state')
   .option('-s, --state <state>', 'Filter by job state')
   .option('-j, --json', 'Output as JSON array (stdout only)')
-  .action(() => {
-    // stub — will be implemented in Phase 10
+  .action((opts) => {
+    const jobs = getJobs(opts.state);
+    if (opts.json) {
+      console.log(JSON.stringify(jobs));
+      return;
+    }
+    for (const j of jobs) {
+      const created = (j.created_at || '').slice(0, 19);
+      const err = j.last_error ? ` err="${j.last_error.slice(0, 40)}"` : '';
+      console.log(`${j.id.padEnd(16)} ${j.command.padEnd(24)} ${j.state.padEnd(12)} ${String(j.attempts).padEnd(3)}/${String(j.max_retries).padEnd(3)} ${created}${err}`);
+    }
   });
 
 program
