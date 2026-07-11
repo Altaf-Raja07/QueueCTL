@@ -77,25 +77,47 @@ function claimJob() {
 }
 
 function runJob(job, done) {
-  const deadline = Date.now() + 1000;
-
-  exec(job.command, { shell: true, timeout: 86400000 }, (err) => {
+  exec(job.command, { shell: true, timeout: 86400000 }, (err, stdout, stderr) => {
     const db = getDb();
-    const updatedAt = new Date().toISOString();
+    const now = new Date();
+    const updatedAt = now.toISOString();
 
     if (err === null) {
       db.prepare(`UPDATE jobs SET state = 'completed', updated_at = ? WHERE id = ?`)
         .run(updatedAt, job.id);
-    } else {
-      const exitCode = err.code || err.status || 'unknown';
+      done();
+      return;
+    }
+
+    const exitCode = err.code || err.status || 'unknown';
+    const stderrTrunc = (stderr || '').toString().slice(0, 200);
+    const lastError = `exit code ${exitCode}${stderrTrunc ? ': ' + stderrTrunc : ''}`;
+
+    const newAttempts = job.attempts + 1;
+
+    if (newAttempts >= job.max_retries) {
       db.prepare(`
         UPDATE jobs
-        SET state = 'failed',
-            attempts = attempts + 1,
+        SET state = 'dead',
+            attempts = ?,
             last_error = ?,
             updated_at = ?
         WHERE id = ?
-      `).run(`exit code ${exitCode}`, updatedAt, job.id);
+      `).run(newAttempts, lastError, updatedAt, job.id);
+    } else {
+      const backoffBase = getConfig('backoff_base');
+      const delaySec = Math.pow(backoffBase, newAttempts);
+      const nextAttemptAt = new Date(now.getTime() + delaySec * 1000).toISOString();
+
+      db.prepare(`
+        UPDATE jobs
+        SET state = 'pending',
+            attempts = ?,
+            next_attempt_at = ?,
+            last_error = ?,
+            updated_at = ?
+        WHERE id = ?
+      `).run(newAttempts, nextAttemptAt, lastError, updatedAt, job.id);
     }
 
     done();
