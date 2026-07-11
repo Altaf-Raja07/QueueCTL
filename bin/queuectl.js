@@ -33,8 +33,8 @@ program
     new Command('start')
       .description('Start one or more workers')
       .option('-c, --count <number>', 'Number of workers to start', '1')
-      .action(() => {
-        startWorker();
+      .action((opts) => {
+        startWorker(parseInt(opts.count, 10) || 1);
       }),
   )
   .addCommand(

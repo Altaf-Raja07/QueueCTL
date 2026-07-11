@@ -9,11 +9,13 @@ const PID_FILE = path.join(PID_DIR, `${process.pid}.pid`);
 
 let shuttingDown = false;
 
-function startWorker() {
+function startWorker(count = 1) {
   register();
   process.on('SIGTERM', handleShutdown);
   process.on('SIGINT', handleShutdown);
-  pollLoop();
+  for (let i = 0; i < count; i++) {
+    pollLoop();
+  }
 }
 
 function register() {
