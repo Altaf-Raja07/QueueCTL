@@ -1,57 +1,41 @@
-# QueueCTL - Backend Developer Internship Assignment
+# QueueCTL — Backend Developer Internship Assignment
 
-## Tech Stack
+**Tech Stack:** Your choice — Python / Go / Node.js / Java
 
-Choose any one:
-
-- Node.js
-- Go
-- Python
-- Java
+**Submission:** Public GitHub repository + README + live review session
 
 ---
 
-# Submission
+# 🎯 Objective
 
-Submit:
+Build a CLI-based background job queue system called `queuectl`.
 
-- Public GitHub Repository
-- README.md
+The system manages background jobs with worker processes, retries failures with exponential backoff, and maintains a Dead Letter Queue (DLQ) for permanently failed jobs.
 
----
+> **Read this first:** Your submission is evaluated in two parts — the code and a 30-minute live review where you explain and modify your own system.
 
-# Objective
+You may use any tools you like to build it (including AI assistants), but you must be able to explain, defend, and change every line on a screen share.
 
-Build a CLI-based background job queue system called **queuectl**.
-
-The system should:
-
-- Manage background jobs
-- Run jobs using worker processes
-- Retry failed jobs using exponential backoff
-- Maintain a Dead Letter Queue (DLQ)
-- Persist job data across restarts
+A submission whose author cannot explain it is rejected regardless of how well it works.
 
 ---
 
-# Problem Overview
+# 🧩 Problem Overview
 
-Implement a minimal production-grade job queue system that supports:
+Implement a minimal, production-grade job queue that supports:
 
-- Enqueuing background jobs
-- Managing background jobs
-- Running multiple worker processes
-- Automatic retries
-- Exponential backoff
-- Dead Letter Queue (DLQ)
-- Persistent storage
-- CLI-based interaction
+- Enqueuing and managing background jobs
+- Running multiple worker processes in parallel
+- Automatic retries with exponential backoff
+- A Dead Letter Queue (DLQ) after retries are exhausted
+- Persistent job storage across restarts and crashes
+- All operations through a CLI
 
 ---
 
-# Job Specification
+# 📦 Job Specification
 
-Every job must contain at least the following fields:
+Each job must contain at least:
 
 ```json
 {
@@ -67,355 +51,404 @@ Every job must contain at least the following fields:
 
 ---
 
-# Job Lifecycle
+# 🔄 Job Lifecycle
 
 | State | Description |
 |--------|-------------|
-| pending | Waiting to be picked up by a worker |
-| processing | Currently being executed |
-| completed | Successfully executed |
-| failed | Failed but retryable |
-| dead | Permanently failed (moved to DLQ) |
+| `pending` | Waiting to be picked up by a worker |
+| `processing` | Currently being executed |
+| `completed` | Successfully executed |
+| `failed` | Failed, but retryable (waiting for its backoff delay) |
+| `dead` | Permanently failed (moved to DLQ) |
+
+### Crash Rule
+
+A job must **never** be stuck in `processing` forever.
+
+If the worker running it dies (including **SIGKILL** — no cleanup handler will run), the system must detect this and recover the job so it can run again.
+
+With your default settings, **worst-case recovery must be under 60 seconds**.
+
+Document your recovery mechanism and its trade-offs in **DECISIONS.md**.
 
 ---
 
-# CLI Commands
+# 💻 CLI Commands
 
-## Enqueue
+| Category | Command Example | Description |
+|----------|-----------------|-------------|
+| Enqueue | `queuectl enqueue '{"id":"job1","command":"sleep 2"}'` | Add a new job |
+| Workers | `queuectl worker start --count 3` | Start workers in the foreground (blocks until stopped) |
+| Workers | `queuectl worker stop` | Gracefully stop all running workers from another terminal |
+| Status | `queuectl status` | Summary of all job states & active workers |
+| List | `queuectl list --state pending --json` | List jobs by state |
+| DLQ | `queuectl dlq list` / `queuectl dlq retry job1` | View or retry DLQ jobs |
+| Config | `queuectl config set max-retries 3` | Manage configuration |
+
+---
+
+## Interface Contract (Required)
+
+Your automated test suite depends on these behaviors.
+
+### 1. Worker Start
+
+- `worker start` runs **in the foreground**
+- `SIGTERM` / `SIGINT` (`Ctrl+C`) triggers graceful shutdown
+- Finish the current job before exiting
+- `SIGKILL` simulates a crash; your system must survive it
+
+### 2. JSON Output
 
 ```bash
-queuectl enqueue '{"id":"job1","command":"sleep 2"}'
+queuectl list --state <state> --json
 ```
 
-Adds a new job.
+Must print **only** a JSON array of job objects to stdout.
 
----
-
-## Start Workers
-
-```bash
-queuectl worker start --count 3
-```
-
-Starts one or more workers.
-
----
-
-## Stop Workers
+### 3. Worker Stop
 
 ```bash
 queuectl worker stop
 ```
 
-Stops workers gracefully.
+Must work from a **different terminal** than the one running the workers.
+
+How your CLI discovers and signals live workers (PID files, control socket, DB rows, etc.) is a design decision.
+
+Document both your chosen design and rejected alternatives in `DECISIONS.md`.
 
 ---
 
-## Status
-
-```bash
-queuectl status
-```
-
-Shows:
-
-- Job counts
-- Worker information
-
----
-
-## List Jobs
-
-```bash
-queuectl list --state pending
-```
-
-Lists jobs filtered by state.
-
----
-
-## Dead Letter Queue
-
-List dead jobs
-
-```bash
-queuectl dlq list
-```
-
-Retry a dead job
-
-```bash
-queuectl dlq retry job1
-```
-
----
-
-## Configuration
-
-Example:
-
-```bash
-queuectl config set max-retries 3
-```
-
-Configuration should support things like:
-
-- Retry count
-- Backoff base
-
----
-
-# System Requirements
+# ⚙️ System Requirements
 
 ## 1. Job Execution
 
-Workers must execute shell commands.
+Workers execute the job's command via the shell.
 
-Examples:
+Exit code determines:
 
-```bash
-echo hello
-```
-
-```bash
-sleep 2
-```
-
-Exit code determines success or failure.
-
-Invalid commands must fail.
-
----
-
+- `0` → Success
+- Non-zero → Failure (including command-not-found)
 ## 2. Retry & Backoff
 
-Failed jobs retry automatically.
+Failed jobs retry automatically after a delay:
 
-Use exponential backoff.
-
-Formula:
-
-```
-delay = base ^ attempts
+```text
+delay = base ^ attempts seconds
 ```
 
-Example:
+Where `attempts` is the number of completed attempts.
 
-Base = 2
+Example with the default base of `2`:
 
-Attempt 1 → 2 seconds
+| Attempt | Delay |
+|---------|-------|
+| 1 | 2 seconds |
+| 2 | 4 seconds |
+| 3 | 8 seconds |
 
-Attempt 2 → 4 seconds
+The default backoff base is `2`, configurable via:
 
-Attempt 3 → 8 seconds
+```bash
+queuectl config set backoff-base <value>
+```
 
-After max retries:
+After `max_retries` failed attempts, the job moves to the Dead Letter Queue (`dead`).
 
-Move job to Dead Letter Queue.
+```bash
+queuectl dlq retry <id>
+```
+
+Re-enqueues a dead job.
+
+Decide whether retrying from the DLQ resets `attempts`, and justify your choice in **DECISIONS.md**.
 
 ---
 
 ## 3. Persistence
 
-Jobs must survive application restart.
+All job data must survive process restarts.
 
-Acceptable storage:
+You may use:
 
+- File-based JSON
 - SQLite
-- JSON
-- Embedded database
-- Any reasonable persistent storage
+- Any other persistent storage you can justify
+
+However, your locking strategy must actually work for the chosen storage backend.
 
 ---
 
-## 4. Worker Management
+## 4. Worker Management & Concurrency
 
-Support multiple workers.
+Requirements:
 
-Workers should execute jobs in parallel.
+- Multiple workers run in parallel.
+- Workers may be started from **different terminal sessions**.
+- These are **separate OS processes**, not merely threads.
 
-Prevent duplicate processing.
+### Important Constraint
 
-Implement locking.
+A job **must never** be executed by two workers simultaneously.
 
-Workers should shut down gracefully.
+In `DECISIONS.md`, point to the **exact line(s)** of code that make claiming a job atomic and explain why that mechanism is atomic across processes.
 
-Current job should finish before exiting.
+### Graceful Shutdown
+
+On:
+
+- `queuectl worker stop`
+- `Ctrl+C`
+
+Workers should:
+
+1. Finish the current job.
+2. Exit cleanly.
 
 ---
 
 ## 5. Configuration
 
-Configuration should allow changing:
+The following settings must be configurable via CLI:
 
-- Retry count
+- Maximum retry count
 - Backoff base
 
-Configuration should be accessible via CLI.
+Configuration must persist across restarts.
+
+Also document whether configuration changes affect jobs that have already been enqueued.
 
 ---
 
-# Expected Test Scenarios
+# 🧪 Automated Testing (Live During Interview)
 
-The project should successfully demonstrate:
+During the interview, an automated test script will run against your real CLI.
 
-## Scenario 1
+The script covers at least the following scenarios:
 
-Basic job completes successfully.
+## 1. Basic Job
 
----
-
-## Scenario 2
-
-Failed job retries.
-
-Eventually moves to DLQ.
+A normal job completes successfully.
 
 ---
 
-## Scenario 3
+## 2. Retry & DLQ
 
-Multiple workers process jobs without overlap.
+A failing job:
 
----
-
-## Scenario 4
-
-Invalid commands fail correctly.
+- retries with exponential backoff
+- eventually lands in the DLQ
 
 ---
 
-## Scenario 5
+## 3. Parallel Workers
 
-Job data survives restart.
+Many jobs are executed across multiple workers.
 
----
-
-# Must-Have Deliverables
-
-- Working CLI application
-- Persistent storage
-- Multiple worker support
-- Retry mechanism
-- Exponential backoff
-- Dead Letter Queue
-- Configuration management
-- Clean CLI
-- README
-- Modular architecture
-- Basic testing
+Every job must execute **exactly once**.
 
 ---
 
-# README Expectations
+## 4. Worker Crash Recovery
 
-README should include:
+Workers receive `SIGKILL` while processing jobs.
 
-## 1. Setup Instructions
+After restarting workers:
 
-How to install.
-
-How to run.
-
----
-
-## 2. Usage
-
-CLI examples.
-
-Expected outputs.
+- every job completes
+- nothing remains permanently in the `processing` state
 
 ---
 
-## 3. Architecture Overview
+## 5. Persistence
 
-Explain:
-
-- Job lifecycle
-- Worker logic
-- Persistence
-- Retry mechanism
+Jobs survive a complete restart of the application.
 
 ---
 
-## 4. Assumptions & Trade-offs
+### Important Notes
 
-Explain design decisions.
+Failing scenarios **1–3** during the interview immediately ends the interview.
 
-Mention simplifications.
+If something fails, you'll be asked to debug it live.
 
----
+The evaluation includes **how you diagnose problems under pressure**, not only whether the implementation works.
 
-## 5. Testing
+The automated script assumes the CLI interface contract exactly as specified.
 
-Explain how to verify:
-
-- Queue
-- Workers
-- Retry
-- DLQ
+Changing CLI behavior—even if your implementation is technically correct—will cause the tests to fail.
 
 ---
 
-# Evaluation Criteria
+# 📋 Deliverables
 
-| Criteria | Weight |
-|-----------|---------|
-| Functionality | 40% |
-| Code Quality | 20% |
-| Robustness | 20% |
-| Documentation | 10% |
-| Testing | 10% |
+Your submission must include:
+
+- ✅ Working `queuectl` CLI
+- ✅ All required commands implemented
+- ✅ Persistent storage
+- ✅ Retry with exponential backoff
+- ✅ Dead Letter Queue (DLQ)
+- ✅ Crash recovery
+- ✅ `README.md`
+- ✅ `DECISIONS.md`
+- ✅ Incremental Git history
+- ✅ Short CLI demo recording (linked from README)
 
 ---
 
-# Bonus Features
+# DECISIONS.md (Required)
 
-Optional features:
+Answer these five questions clearly and specifically.
 
-- Job timeout
-- Priority queue
+Generic answers receive **zero credit**.
+
+1. Which exact line(s) prevent two workers from claiming the same job, and why is that operation atomic across separate OS processes?
+
+2. A worker receives `SIGKILL` halfway through a job.
+
+   Explain:
+
+   - what state the job is in,
+   - how it is recovered,
+   - worst-case recovery delay.
+
+3. Does `dlq retry` reset `attempts`?
+
+   Explain why.
+4. What designs did you consider and reject for `worker stop` (cross-process signaling), and why?
+
+5. If priorities were added tomorrow (high-priority jobs jump the queue), which parts of your design survive unchanged and which parts would need to change?
+
+---
+
+# 🎙️ Live Review (30 Minutes)
+
+Shortlisted candidates will participate in a screen-share interview consisting of three parts.
+
+## 1. Automated Test Run (~10 minutes)
+
+The interviewers will run their automated test suite against your code on your machine.
+
+If any test fails, you are expected to debug the issue live while explaining your reasoning.
+
+---
+
+## 2. Design Defense (~10 minutes)
+
+You will be asked detailed questions about:
+
+- Your architecture
+- Design decisions
+- Edge cases
+- Concurrency
+- Crash recovery
+- Trade-offs
+
+These questions build upon the topics covered in `DECISIONS.md`, but may go deeper.
+
+---
+
+## 3. Live Code Change (~10 minutes)
+
+You will implement one small feature or behavioral change to your own code live.
+
+Examples include:
+
+- Adding a new CLI command
+- Modifying an existing command
+- Changing retry behavior
+- Tweaking configuration
+
+The focus is **how well you understand and navigate your own codebase**, not whether you finish every change.
+
+---
+
+## Environment
+
+Before the interview, ensure that:
+
+- Your repository is cloned locally.
+- The project runs successfully.
+- `bash` is available.
+- `python3` is available.
+
+You may also receive one additional requirement change by email after submission, with **48 hours** to implement it.
+
+Design your solution with future changes in mind.
+
+---
+
+# 📊 Evaluation Criteria
+
+| Criteria | Weight | Description |
+|----------|--------|-------------|
+| Automated Test Run | Gate | Failing scenarios 1–3 ends the interview |
+| Functionality | 20% | Full command surface, DLQ, configuration |
+| Robustness | 20% | Crash recovery, concurrency safety, edge cases |
+| Live Review | 30% | Ability to explain and modify your own system |
+| Code Quality | 15% | Structure, readability, idiomatic use of your chosen stack |
+| `DECISIONS.md` + `README.md` | 15% | Specific, honest reasoning and real trade-offs |
+
+---
+
+# 🌟 Bonus (Optional)
+
+Implementing any of the following features may strengthen your submission:
+
+- Job timeouts
+- Priority queues
 - Scheduled jobs (`run_at`)
 - Job output logging
 - Metrics
-- Execution statistics
-- Minimal monitoring dashboard
+- Minimal web dashboard
 
 ---
 
-# Common Mistakes (Disqualification Risks)
+# ⚠️ Disqualification
 
-Avoid:
+Your submission may be rejected if any of the following occur:
 
-- Missing retry mechanism
-- Missing DLQ
-- Duplicate job execution
-- Race conditions
-- Non-persistent storage
-- Hardcoded configuration
-- Poor README
-
----
-
-# Submission Checklist
-
-- Push to a public GitHub repository.
-- Include README.md.
-- Record a CLI demo.
-- Upload demo video.
-- Include demo link inside README.
-- Optional: architecture.md or design.md
+- Fails scenarios **1–3** during the live automated test run.
+- Duplicate execution of the same job.
+- Jobs are lost after restart.
+- Jobs remain permanently stuck in the `processing` state after a worker crash.
+- You cannot explain your own code during the live review.
+- Missing `DECISIONS.md`.
+- `DECISIONS.md` contains vague or evasive answers.
 
 ---
 
-# Final Checklist
+# 🧾 Submission
 
-- All CLI commands work.
-- Jobs persist after restart.
-- Retry works.
-- Exponential backoff works.
-- DLQ works.
-- Workers support concurrency.
-- CLI is documented.
-- Code is modular.
-- Basic tests included.
+1. Push your project to a **public GitHub repository** with genuine incremental commit history.
+
+2. Include the following files:
+
+   - `README.md`
+   - `DECISIONS.md`
+   - Link to the CLI demo recording
+
+3. Share the GitHub repository link for review.
+
+---
+
+# ✅ Summary Checklist
+
+- [ ] Working `queuectl` CLI
+- [ ] Foreground workers
+- [ ] Graceful shutdown
+- [ ] Crash recovery
+- [ ] Persistent storage
+- [ ] Parallel workers
+- [ ] Atomic job claiming
+- [ ] Exponential backoff
+- [ ] Dead Letter Queue (DLQ)
+- [ ] Configurable retries
+- [ ] Configurable backoff base
+- [ ] `README.md`
+- [ ] `DECISIONS.md`
+- [ ] Incremental Git history
+- [ ] CLI demo recording
+- [ ] Passes all five automated test scenarios

@@ -47,6 +47,7 @@ program
   .command('list')
   .description('List jobs filtered by state')
   .option('-s, --state <state>', 'Filter by job state')
+  .option('-j, --json', 'Output as JSON array (stdout only)')
   .action(() => {
     // stub — will be implemented in Phase 10
   });
