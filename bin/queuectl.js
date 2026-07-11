@@ -2,7 +2,7 @@
 
 const { Command } = require('commander');
 const { getConfig, setConfig, getAllConfig } = require('../src/config');
-const { enqueueJob } = require('../src/queue');
+const { enqueueJob, listDeadJobs, retryDeadJob } = require('../src/queue');
 const { startWorker } = require('../src/worker');
 
 const program = new Command();
@@ -68,15 +68,28 @@ program
     new Command('list')
       .description('List dead jobs')
       .action(() => {
-        // stub — will be implemented in Phase 6
+        const jobs = listDeadJobs();
+        if (jobs.length === 0) {
+          console.error('No dead jobs');
+          return;
+        }
+        for (const j of jobs) {
+          console.log(`${j.id}  attempts=${j.attempts}/${j.max_retries}  error="${j.last_error || ''}"  updated=${j.updated_at}`);
+        }
       }),
   )
   .addCommand(
     new Command('retry')
       .description('Retry a dead job')
       .argument('<job-id>', 'ID of the job to retry')
-      .action(() => {
-        // stub — will be implemented in Phase 6
+      .action((id) => {
+        try {
+          const result = retryDeadJob(id);
+          console.error(`Job ${result.id} retried (${result.state})`);
+        } catch (e) {
+          console.error(e.message);
+          process.exit(1);
+        }
       }),
   );
 

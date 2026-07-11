@@ -1,6 +1,26 @@
 const { getDb } = require('./db');
 const { getConfig } = require('./config');
 
+function listDeadJobs() {
+  const db = getDb();
+  return db.prepare("SELECT * FROM jobs WHERE state = 'dead' ORDER BY updated_at DESC").all();
+}
+
+function retryDeadJob(id) {
+  const db = getDb();
+  const job = db.prepare("SELECT id, state FROM jobs WHERE id = ? AND state = 'dead'").get(id);
+  if (!job) throw new Error(`No dead job with id '${id}'`);
+
+  const now = new Date().toISOString();
+  db.prepare(`
+    UPDATE jobs
+    SET state = 'pending', attempts = 0, next_attempt_at = NULL, last_error = NULL, updated_at = ?
+    WHERE id = ?
+  `).run(now, id);
+
+  return { id, state: 'pending' };
+}
+
 function enqueueJob(input) {
   let job;
   try {
@@ -35,4 +55,4 @@ function enqueueJob(input) {
   return { id: job.id, state: 'pending' };
 }
 
-module.exports = { enqueueJob };
+module.exports = { enqueueJob, listDeadJobs, retryDeadJob };
