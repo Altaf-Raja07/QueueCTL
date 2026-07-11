@@ -126,4 +126,32 @@ function runJob(job, done) {
   });
 }
 
-module.exports = { startWorker };
+function stopWorkers() {
+  let signaled = [];
+  let pruned = [];
+
+  try {
+    fs.mkdirSync(PID_DIR, { recursive: true });
+  } catch (_) {}
+
+  for (const entry of fs.readdirSync(PID_DIR)) {
+    if (!entry.endsWith('.pid')) continue;
+    const pid = parseInt(path.basename(entry, '.pid'), 10);
+    const filePath = path.join(PID_DIR, entry);
+
+    try {
+      process.kill(pid, 0);
+      process.kill(pid, 'SIGTERM');
+      signaled.push(pid);
+    } catch (e) {
+      if (e.code === 'ESRCH') {
+        fs.unlinkSync(filePath);
+        pruned.push(pid);
+      }
+    }
+  }
+
+  return { signaled, pruned };
+}
+
+module.exports = { startWorker, stopWorkers };

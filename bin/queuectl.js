@@ -3,7 +3,7 @@
 const { Command } = require('commander');
 const { getConfig, setConfig, getAllConfig } = require('../src/config');
 const { enqueueJob, listDeadJobs, retryDeadJob } = require('../src/queue');
-const { startWorker } = require('../src/worker');
+const { startWorker, stopWorkers } = require('../src/worker');
 
 const program = new Command();
 
@@ -41,7 +41,17 @@ program
     new Command('stop')
       .description('Stop all workers gracefully')
       .action(() => {
-        // stub — will be implemented in Phase 8
+        const { signaled, pruned } = stopWorkers();
+        if (signaled.length === 0 && pruned.length === 0) {
+          console.error('No running workers found');
+          return;
+        }
+        for (const pid of signaled) {
+          console.error(`Sent SIGTERM to worker ${pid}`);
+        }
+        for (const pid of pruned) {
+          console.error(`Pruned stale PID ${pid}`);
+        }
       }),
   );
 
