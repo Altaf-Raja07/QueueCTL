@@ -3,6 +3,7 @@
 const { Command } = require('commander');
 const { getConfig, setConfig, getAllConfig } = require('../src/config');
 const { enqueueJob } = require('../src/queue');
+const { startWorker } = require('../src/worker');
 
 const program = new Command();
 
@@ -33,7 +34,7 @@ program
       .description('Start one or more workers')
       .option('-c, --count <number>', 'Number of workers to start', '1')
       .action(() => {
-        // stub — will be implemented in Phase 4/7
+        startWorker();
       }),
   )
   .addCommand(
