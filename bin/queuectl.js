@@ -60,11 +60,11 @@ program
   .description('Show job counts and worker information')
   .action(() => {
     const counts = getStatus();
-    const workers = countActiveWorkers();
-    for (const [state, count] of Object.entries(counts)) {
-      console.log(`${state.padEnd(12)} ${count}`);
+    const order = ['pending', 'processing', 'completed', 'failed', 'dead'];
+    for (const state of order) {
+      console.log(`${state.padEnd(12)} ${counts[state]}`);
     }
-    console.log(`${'active workers'.padEnd(12)} ${workers}`);
+    console.log(`${'active workers'.padEnd(12)} ${countActiveWorkers()}`);
   });
 
 program
@@ -73,9 +73,18 @@ program
   .option('-s, --state <state>', 'Filter by job state')
   .option('-j, --json', 'Output as JSON array (stdout only)')
   .action((opts) => {
+    if (opts.state && !['pending', 'processing', 'completed', 'failed', 'dead'].includes(opts.state)) {
+      console.error(`Invalid state '${opts.state}'. Must be one of: pending, processing, completed, failed, dead`);
+      process.exit(1);
+    }
     const jobs = getJobs(opts.state);
     if (opts.json) {
       console.log(JSON.stringify(jobs));
+      return;
+    }
+    if (jobs.length === 0) {
+      const label = opts.state ? ` in state '${opts.state}'` : '';
+      console.error(`No jobs${label}`);
       return;
     }
     for (const j of jobs) {
@@ -135,7 +144,12 @@ program
       .description('Get a config value')
       .argument('<key>', 'Config key')
       .action((key) => {
-        console.log(getConfig(key));
+        const val = getConfig(key);
+        if (val === undefined) {
+          console.error(`Unknown config key '${key}'`);
+          process.exit(1);
+        }
+        console.log(val);
       }),
   )
   .addCommand(
