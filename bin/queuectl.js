@@ -2,6 +2,7 @@
 
 const { Command } = require('commander');
 const { getConfig, setConfig, getAllConfig } = require('../src/config');
+const { enqueueJob } = require('../src/queue');
 
 const program = new Command();
 
@@ -14,8 +15,14 @@ program
   .command('enqueue')
   .description('Add a new job to the queue')
   .argument('<json>', 'Job JSON string')
-  .action(() => {
-    // stub — will be implemented in Phase 3
+  .action((json) => {
+    try {
+      const result = enqueueJob(json);
+      console.error(`Job ${result.id} enqueued (${result.state})`);
+    } catch (e) {
+      console.error(e.message);
+      process.exit(1);
+    }
   });
 
 program
