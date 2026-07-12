@@ -15,10 +15,37 @@ program
 program
   .command('enqueue')
   .description('Add a new job to the queue')
-  .argument('<json>', 'Job JSON string')
-  .action((json) => {
+  .argument('[json_or_command]', 'Job JSON string or shell command')
+  .option('-i, --id <id>', 'Unique ID for the job')
+  .option('-r, --retries <number>', 'Max retries count')
+  .action((arg, opts) => {
     try {
-      const result = enqueueJob(json);
+      if (!arg) {
+        throw new Error('Missing required argument: JSON string or command');
+      }
+
+      let payload;
+      // Try parsing as JSON first
+      try {
+        payload = JSON.parse(arg);
+      } catch {
+        // Otherwise, treat as command string
+        const crypto = require('crypto');
+        const randomId = `job_${crypto.randomUUID().slice(0, 8)}`;
+        payload = {
+          id: opts.id || randomId,
+          command: arg,
+        };
+        if (opts.retries !== undefined) {
+          const retriesVal = parseInt(opts.retries, 10);
+          if (isNaN(retriesVal)) {
+            throw new Error('Option --retries must be a number');
+          }
+          payload.max_retries = retriesVal;
+        }
+      }
+
+      const result = enqueueJob(JSON.stringify(payload));
       console.error(`Job ${result.id} enqueued (${result.state})`);
     } catch (e) {
       console.error(e.message);

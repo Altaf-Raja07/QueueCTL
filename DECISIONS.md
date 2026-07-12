@@ -171,7 +171,7 @@ For a production deployment, we would use a proper process supervisor (systemd, 
 
 **FIFO ordering assumptions in tests and documentation.** The `e2e-concurrency` test and the manual test scenarios assume round-robin or FIFO processing. Priority inversion could cause starvation of low-priority jobs, which needs to be documented as a known behavior.
 
-**The `list` command's default table output.** Currently sorted by `created_at` only. Would likely want to sort by `(priority, created_at)` or at least display the priority column. The table format in `bin/queuectl.js:88-93` would need an additional column.
+**The `list` command's default table output.** Currently sorted by `created_at` only. Would likely want to sort by `(priority, created_at)` or at least display the priority column. The table format in `bin/queuectl.js:117-121` would need an additional column.
 
 **The `status` output.** Would benefit from showing priority distribution (e.g., "3 high, 10 normal, 2 low pending").
 
