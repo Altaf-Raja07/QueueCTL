@@ -1,5 +1,5 @@
 {
-  "name": "queuectl",
+  "name": "@altaf07/queuectl",
   "version": "1.0.0",
   "description": "CLI-based background job queue system",
   "bin": {
