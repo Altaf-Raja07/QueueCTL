@@ -161,6 +161,50 @@ Config keys accept hyphens or underscores interchangeably (e.g. `max-retries` â†
 
 ---
 
+## Publishing to npm
+
+To distribute `queuectl` as a globally installable command-line tool via the npm registry:
+
+### 1. Package Configuration
+Ensure your `package.json` specifies the binary name and path under the `"bin"` field, and includes only the necessary directory files:
+```json
+{
+  "name": "queuectl", // Note: you might need to use a scoped name like "@username/queuectl" if the name is taken
+  "version": "1.0.0",
+  "bin": {
+    "queuectl": "bin/queuectl.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ]
+}
+```
+
+### 2. Login and Publish
+1. Register for an npm account on [npmjs.com](https://www.npmjs.com/).
+2. Log in from your terminal:
+   ```bash
+   npm login
+   ```
+3. Publish your package:
+   ```bash
+   # If using a standard name:
+   npm publish
+   
+   # If using a scoped name (e.g., @username/queuectl):
+   npm publish --access public
+   ```
+
+### 3. Install and Run
+Once published, users can install it globally from anywhere:
+```bash
+npm install -g queuectl
+queuectl --help
+```
+
+---
+
 ## Architecture
 
 ### Directory Structure
