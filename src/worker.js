@@ -10,6 +10,7 @@ const PID_FILE = path.join(PID_DIR, `${process.pid}.pid`);
 let shuttingDown = false;
 
 function startWorker(count = 1) {
+  console.error(`Worker started (PID: ${process.pid})`);
   register();
   sweepStaleJobs();
   process.on('SIGTERM', handleShutdown);
@@ -73,6 +74,7 @@ function pollLoop() {
   const job = claimJob();
 
   if (!job) {
+    console.error(`No pending jobs, polling again in ${getConfig('poll_interval_ms') / 1000}s...`);
     setTimeout(pollLoop, getConfig('poll_interval_ms'));
     return;
   }
@@ -94,13 +96,17 @@ function claimJob() {
         updated_at = ?
     WHERE id = (
       SELECT id FROM jobs
-      WHERE state = 'pending'
+      WHERE state IN ('pending', 'failed')
         AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
       ORDER BY created_at ASC
       LIMIT 1
     )
     RETURNING *
   `).get(now, process.pid, now, now);
+
+  if (row) {
+    console.error(`Claimed job ${row.id} - running ${row.command}`);
+  }
 
   return row || null;
 }
@@ -112,6 +118,7 @@ function runJob(job, done) {
     const updatedAt = now.toISOString();
 
     if (err === null) {
+      console.error(`Job ${job.id} completed successfully`);
       db.prepare(`UPDATE jobs SET state = 'completed', updated_at = ? WHERE id = ?`)
         .run(updatedAt, job.id);
       done();
@@ -125,6 +132,7 @@ function runJob(job, done) {
     const newAttempts = job.attempts + 1;
 
     if (newAttempts >= job.max_retries) {
+      console.error(`Job ${job.id} moved to DLQ after ${newAttempts} retries`);
       db.prepare(`
         UPDATE jobs
         SET state = 'dead',
@@ -134,13 +142,14 @@ function runJob(job, done) {
         WHERE id = ?
       `).run(newAttempts, lastError, updatedAt, job.id);
     } else {
+      console.error(`Job ${job.id} failed (attempt ${newAttempts}/${job.max_retries}): ${lastError}`);
       const backoffBase = getConfig('backoff_base');
       const delaySec = Math.pow(backoffBase, newAttempts);
       const nextAttemptAt = new Date(now.getTime() + delaySec * 1000).toISOString();
 
       db.prepare(`
         UPDATE jobs
-        SET state = 'pending',
+        SET state = 'failed',
             attempts = ?,
             next_attempt_at = ?,
             last_error = ?,

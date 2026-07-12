@@ -4,7 +4,7 @@
 
 **Which exact line(s) prevent two workers from claiming the same job, and why is that operation atomic across separate OS processes?**
 
-The atomic claim is the single SQL `UPDATE` statement at `src/worker.js:89-103` (the `claimJob` function):
+The atomic claim is the single SQL `UPDATE` statement at `src/worker.js:91-105` (the `claimJob` function):
 
 ```sql
 UPDATE jobs
@@ -30,7 +30,7 @@ RETURNING *
 
 3. **`better-sqlite3` is synchronous.** Every `db.prepare(...).get(...)` call blocks the calling JavaScript thread until SQLite returns. No Promise or callback can interleave between "read which job is pending" and "write that it's now processing." This eliminates the race regardless of whether concurrency comes from in-process async loops or from physically separate OS processes sharing the same database file.
 
-**The same guarantee holds for the stale-job recovery sweep** at `src/worker.js:28-39` — it is also a single `UPDATE ... WHERE state='processing' AND claimed_at <= ? RETURNING id`, atomically selecting and resetting only jobs past the timeout.
+**The same guarantee holds for the stale-job recovery sweep** at `src/worker.js:29-40` — it is also a single `UPDATE ... WHERE state='processing' AND claimed_at <= ? RETURNING id`, atomically selecting and resetting only jobs past the timeout.
 
 ---
 
@@ -45,7 +45,7 @@ The job remains in `processing` state in the SQLite database. The columns `claim
 ### Recovery sequence
 
 1. A new worker starts (either manually by the user, or one was already running).
-2. On startup (`startWorker` at `src/worker.js:14`) and at the top of every poll iteration (`pollLoop` at `src/worker.js:71`), the worker calls `sweepStaleJobs()` (`src/worker.js:22-44`).
+2. On startup (`startWorker` at `src/worker.js:15`) and at the top of every poll iteration (`pollLoop` at `src/worker.js:72`), the worker calls `sweepStaleJobs()` (`src/worker.js:23-45`).
 3. `sweepStaleJobs` reads the live `stale_timeout_seconds` config value (default: 15). It computes a cutoff timestamp: `now - stale_timeout_seconds`.
 4. It executes:
    ```sql
@@ -117,7 +117,7 @@ This is clearly distinct from our Phase 5 retry logic, which correctly increment
 
 ### Chosen Design: PID File Registry
 
-Each worker process, on startup, writes its `process.pid` to `.queuectl/workers/<pid>.pid` (`src/worker.js:46-49`). On graceful shutdown (SIGTERM/SIGINT), the worker deletes its own file (`src/worker.js:51-57`). The `worker stop` command (`src/worker.js:156-182`) reads the directory, checks each PID via `process.kill(pid, 0)` (throws `ESRCH` if the process is dead), sends `SIGTERM` to live PIDs, and prunes stale files from crashed workers that never got to deregister.
+Each worker process, on startup, writes its `process.pid` to `.queuectl/workers/<pid>.pid` (`src/worker.js:47-50`). On graceful shutdown (SIGTERM/SIGINT), the worker deletes its own file (`src/worker.js:52-58`). The `worker stop` command (`src/worker.js:165-191`) reads the directory, checks each PID via `process.kill(pid, 0)` (throws `ESRCH` if the process is dead), sends `SIGTERM` to live PIDs, and prunes stale files from crashed workers that never got to deregister.
 
 ### Rejected: Unix Domain Socket
 
@@ -167,7 +167,7 @@ For a production deployment, we would use a proper process supervisor (systemd, 
 
 ### What Breaks or Changes
 
-**The claim subquery's ORDER BY.** Currently `ORDER BY created_at ASC` at `src/worker.js:99`. Would change to `ORDER BY priority ASC, created_at ASC` (assuming lower numbers = higher priority). This is a one-line change to `worker.js`.
+**The claim subquery's ORDER BY.** Currently `ORDER BY created_at ASC` at `src/worker.js:101`. Would change to `ORDER BY priority ASC, created_at ASC` (assuming lower numbers = higher priority). This is a one-line change to `worker.js`.
 
 **FIFO ordering assumptions in tests and documentation.** The `e2e-concurrency` test and the manual test scenarios assume round-robin or FIFO processing. Priority inversion could cause starvation of low-priority jobs, which needs to be documented as a known behavior.
 
