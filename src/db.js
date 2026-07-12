@@ -2,7 +2,7 @@ const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
 
-const DB_DIR = path.resolve(__dirname, '..', '.queuectl');
+const DB_DIR = process.env.QUEUECTL_DB_DIR || path.resolve(__dirname, '..', '.queuectl');
 const DB_PATH = path.join(DB_DIR, 'queuectl.db');
 
 let db = null;
@@ -42,4 +42,11 @@ function getDb() {
   return db;
 }
 
-module.exports = { getDb };
+function resetDb() {
+  if (db) {
+    db.close();
+    db = null;
+  }
+}
+
+module.exports = { getDb, resetDb };
