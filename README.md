@@ -1,3 +1,5 @@
+
+
 # queuectl — CLI-Based Background Job Queue System
 
 A minimal, production-grade job queue system that runs entirely via the command line. Workers execute shell commands as background jobs with automatic retries, exponential backoff, a Dead Letter Queue (DLQ), and persistent SQLite storage.
@@ -341,7 +343,7 @@ node bin/queuectl.js worker start  # Job is still there, gets processed
 
 ## Demo Recording
 
-<!-- TODO: Upload demo video and insert link here -->
+<video src="https://github.com/user-attachments/assets/650b50ee-7e34-4663-9124-4a80ef2d5bc9" controls widht="100%"></video>
 
 ---
 
