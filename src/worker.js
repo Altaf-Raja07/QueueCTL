@@ -8,6 +8,8 @@ const PID_DIR = path.resolve(__dirname, '..', '.queuectl', 'workers');
 const PID_FILE = path.join(PID_DIR, `${process.pid}.pid`);
 
 let shuttingDown = false;
+let activeLoopsCount = 0;
+const sleepTimeouts = new Set();
 
 function startWorker(count = 1) {
   console.error(`Worker started (PID: ${process.pid})`);
@@ -15,6 +17,7 @@ function startWorker(count = 1) {
   sweepStaleJobs();
   process.on('SIGTERM', handleShutdown);
   process.on('SIGINT', handleShutdown);
+  activeLoopsCount = count;
   for (let i = 0; i < count; i++) {
     pollLoop();
   }
@@ -60,12 +63,22 @@ function deregister() {
 function handleShutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
+
+  // Wake up/cancel any sleeping loops immediately
+  for (const timeoutId of sleepTimeouts) {
+    clearTimeout(timeoutId);
+    sleepTimeouts.delete(timeoutId);
+    process.nextTick(pollLoop);
+  }
 }
 
 function pollLoop() {
   if (shuttingDown) {
-    deregister();
-    process.exit(0);
+    activeLoopsCount--;
+    if (activeLoopsCount <= 0) {
+      deregister();
+      process.exit(0);
+    }
     return;
   }
 
@@ -75,7 +88,11 @@ function pollLoop() {
 
   if (!job) {
     console.error(`No pending jobs, polling again in ${getConfig('poll_interval_ms') / 1000}s...`);
-    setTimeout(pollLoop, getConfig('poll_interval_ms'));
+    const timeoutId = setTimeout(() => {
+      sleepTimeouts.delete(timeoutId);
+      pollLoop();
+    }, getConfig('poll_interval_ms'));
+    sleepTimeouts.add(timeoutId);
     return;
   }
 

@@ -8,6 +8,7 @@ const TESTS = [
   'e2e-concurrency.js',
   'e2e-crash-recovery.js',
   'e2e-restart.js',
+  'e2e-graceful-multi.js',
 ];
 
 let passed = 0;
